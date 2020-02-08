@@ -1,38 +1,52 @@
-# import mongo
+from pymongo import MongoClient
 from flask import Flask, render_template, request, session
 import datetime
 
 app = Flask(__name__)
-# set app secret key
+app.config.from_json('config.json')
+app.secret_key = app.config['SECRET_KEY']
 
-# configure database
+client = MongoClient(app.config['MONGO_URI'])
+db = client['blueprint']
+messages = db['messages']
+users = db['users']
 
 @app.route('/', methods=['GET'])
 def home():
-    return render_template('index.html'
-        # get messages
-        # other data like login information
-    )
+    return render_template('index.html', messages=messages.find({}), loggedIn='username' in session, username=session.get('username', ''))
 
 @app.route('/register', methods=['POST'])
 def register():
-    # handle registration of user given username and password
+    username = request.form['username']
+    password = request.form['password']
+    if (users.count_documents({'username': username}) > 0):
+        return 'failure'
+    users.insert_one({'username': username, 'password': password})
+    session['username'] = username
     return 'success'
 
 @app.route('/login', methods=['POST'])
 def login():
-    # check if provided username and password match entry in database
+    username = request.form['username']
+    password = request.form['password']
+    if (users.count_documents({'username': username, 'password': password}) > 0):
+        session['username'] = username
+        return 'success'
+    return 'failure'
 
 @app.route('/logout', methods=['POST'])
 def logout():
-    # remove the user's login status
+    session.pop('username', None)
+    return 'success'
 
 @app.route('/message', methods=['POST'])
 def message():
-    # check user login status
+    if 'username' not in session:
+        return 'failure'
+    username = session['username']
     message = request.form['message']
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # insert message, username, and time into database
+    messages.insert_one({'username': username, 'message': message, 'ts': now})
     return 'success'
 
 if __name__ == '__main__':
